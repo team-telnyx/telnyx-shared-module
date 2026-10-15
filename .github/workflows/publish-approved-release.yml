@@ -1,0 +1,105 @@
+name: publish-approved-release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Approved semantic version without a v prefix
+        required: true
+      source_run_id:
+        description: Successful KMP packaging workflow run ID
+        required: true
+      source_commit:
+        description: Full source commit SHA expected in artifacts.json
+        required: true
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: binary-release
+    steps:
+      - uses: actions/checkout@v4
+      - name: Refuse an existing version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "${{ inputs.version }}" >/dev/null 2>&1; then
+            echo "Release already exists and is immutable"
+            exit 1
+          fi
+      - name: Download artifacts from the private source workflow
+        env:
+          GH_TOKEN: ${{ secrets.KMP_SOURCE_REPO_TOKEN }}
+        run: |
+          mkdir -p incoming
+          gh run download "${{ inputs.source_run_id }}" \
+            --repo team-telnyx/telnyx-webrtc-kmp-shared-module \
+            --name kmp-release-candidate \
+            --dir incoming
+      - name: Validate manifest and provenance
+        run: |
+          scripts/validate-artifacts.sh incoming
+          python3 - <<'PY'
+          import json
+          manifest = json.load(open("incoming/artifacts.json"))
+          assert manifest["version"] == "${{ inputs.version }}"
+          assert manifest["source_commit"] == "${{ inputs.source_commit }}"
+          PY
+      - name: Materialize the immutable Swift package manifest
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          version = os.environ["VERSION"]
+          manifest = json.loads(Path("incoming/artifacts.json").read_text())
+          checksum = manifest["swiftpm_checksum"]
+          asset = f"TelnyxObservability-{version}.xcframework.zip"
+          package = f'''// swift-tools-version: 5.7
+          import PackageDescription
+
+          let package = Package(
+              name: "TelnyxWebRTCKMPBinaries",
+              platforms: [.iOS(.v12)],
+              products: [
+                  .library(
+                      name: "TelnyxObservability",
+                      targets: ["TelnyxObservability"]
+                  )
+              ],
+              targets: [
+                  .binaryTarget(
+                      name: "TelnyxObservability",
+                      url: "https://github.com/team-telnyx/telnyx-webrtc-kmp-binaries/releases/download/{version}/{asset}",
+                      checksum: "{checksum}"
+                  )
+              ]
+          )
+          '''
+          Path("Package.swift").write_text(package)
+          PY
+          swift package dump-package >/dev/null
+      - name: Commit and tag package manifest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Package.swift
+          git commit -m "Publish KMP binaries ${{ inputs.version }}"
+          git tag "${{ inputs.version }}"
+          git push origin HEAD:main "${{ inputs.version }}"
+      - name: Publish immutable GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ inputs.version }}" incoming/* \
+            --title "KMP binaries ${{ inputs.version }}" \
+            --notes "Built from private source commit ${{ inputs.source_commit }}."

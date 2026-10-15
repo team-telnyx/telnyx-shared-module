@@ -1,0 +1,19 @@
+name: validate
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  swift-package:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: swift package dump-package
+
+  scripts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash -n scripts/validate-artifacts.sh
