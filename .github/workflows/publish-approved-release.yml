@@ -3,6 +3,11 @@ name: publish-approved-release
 on:
   workflow_dispatch:
     inputs:
+      dry_run:
+        description: Validate only; publication requires separate explicit approval
+        type: boolean
+        default: true
+        required: true
       version:
         description: Approved semantic version without a v prefix
         required: true
@@ -14,29 +19,42 @@ on:
         required: true
 
 permissions:
-  contents: write
+  contents: read
   actions: read
 
 jobs:
-  publish:
-    runs-on: ubuntu-latest
-    environment: binary-release
+  validate:
+    runs-on: macos-latest
+    env:
+      VERSION: ${{ inputs.version }}
+      SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+      SOURCE_COMMIT: ${{ inputs.source_commit }}
     steps:
-      - uses: actions/checkout@v4
-      - name: Refuse an existing version
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Validate inputs
         run: |
-          if gh release view "${{ inputs.version }}" >/dev/null 2>&1; then
-            echo "Release already exists and is immutable"
-            exit 1
-          fi
+          python3 - <<'PYCODE'
+          import os, re
+          assert re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", os.environ["VERSION"])
+          assert re.fullmatch(r"[0-9]+", os.environ["SOURCE_RUN_ID"])
+          assert re.fullmatch(r"[0-9a-f]{40}", os.environ["SOURCE_COMMIT"])
+          PYCODE
       - name: Download artifacts from the private source workflow
         env:
           GH_TOKEN: ${{ secrets.KMP_SOURCE_REPO_TOKEN }}
         run: |
+          test -n "$GH_TOKEN" || { echo "Configure KMP_SOURCE_REPO_TOKEN with source Actions read access"; exit 1; }
+          gh run view "$SOURCE_RUN_ID" --repo team-telnyx/telnyx-webrtc-kmp-shared-module \
+            --json conclusion,headSha,workflowName > run.json
+          python3 - <<'PYCODE'
+          import json, os
+          run = json.load(open("run.json"))
+          assert run["conclusion"] == "success"
+          assert run["headSha"] == os.environ["SOURCE_COMMIT"]
+          assert run["workflowName"] == "package-release-candidate"
+          PYCODE
           mkdir -p incoming
-          gh run download "${{ inputs.source_run_id }}" \
+          gh run download "$SOURCE_RUN_ID" \
             --repo team-telnyx/telnyx-webrtc-kmp-shared-module \
             --name kmp-release-candidate \
             --dir incoming
@@ -44,10 +62,10 @@ jobs:
         run: |
           scripts/validate-artifacts.sh incoming
           python3 - <<'PY'
-          import json
+          import json, os
           manifest = json.load(open("incoming/artifacts.json"))
-          assert manifest["version"] == "${{ inputs.version }}"
-          assert manifest["source_commit"] == "${{ inputs.source_commit }}"
+          assert manifest["version"] == os.environ["VERSION"]
+          assert manifest["source_commit"] == os.environ["SOURCE_COMMIT"]
           PY
       - name: Materialize the immutable Swift package manifest
         env:
@@ -86,6 +104,113 @@ jobs:
           Path("Package.swift").write_text(package)
           PY
           swift package dump-package >/dev/null
+      - name: Dry-run result
+        run: echo "Candidate verified; no files committed, uploaded, tagged or released."
+
+  publish:
+    if: ${{ !inputs.dry_run }}
+    needs: validate
+    runs-on: macos-latest
+    environment: binary-release
+    permissions:
+      contents: write
+      actions: read
+    env:
+      VERSION: ${{ inputs.version }}
+      SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+      SOURCE_COMMIT: ${{ inputs.source_commit }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Validate inputs
+        run: |
+          python3 - <<'PYCODE'
+          import os, re
+          assert re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", os.environ["VERSION"])
+          assert re.fullmatch(r"[0-9]+", os.environ["SOURCE_RUN_ID"])
+          assert re.fullmatch(r"[0-9a-f]{40}", os.environ["SOURCE_COMMIT"])
+          PYCODE
+      - name: Download artifacts from the private source workflow
+        env:
+          GH_TOKEN: ${{ secrets.KMP_SOURCE_REPO_TOKEN }}
+        run: |
+          test -n "$GH_TOKEN" || { echo "Configure KMP_SOURCE_REPO_TOKEN with source Actions read access"; exit 1; }
+          gh run view "$SOURCE_RUN_ID" --repo team-telnyx/telnyx-webrtc-kmp-shared-module \
+            --json conclusion,headSha,workflowName > run.json
+          python3 - <<'PYCODE'
+          import json, os
+          run = json.load(open("run.json"))
+          assert run["conclusion"] == "success"
+          assert run["headSha"] == os.environ["SOURCE_COMMIT"]
+          assert run["workflowName"] == "package-release-candidate"
+          PYCODE
+          mkdir -p incoming
+          gh run download "$SOURCE_RUN_ID" \
+            --repo team-telnyx/telnyx-webrtc-kmp-shared-module \
+            --name kmp-release-candidate \
+            --dir incoming
+      - name: Validate manifest and provenance
+        run: |
+          scripts/validate-artifacts.sh incoming
+          python3 - <<'PY'
+          import json, os
+          manifest = json.load(open("incoming/artifacts.json"))
+          assert manifest["version"] == os.environ["VERSION"]
+          assert manifest["source_commit"] == os.environ["SOURCE_COMMIT"]
+          PY
+      - name: Materialize the immutable Swift package manifest
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          version = os.environ["VERSION"]
+          manifest = json.loads(Path("incoming/artifacts.json").read_text())
+          checksum = manifest["swiftpm_checksum"]
+          asset = f"TelnyxObservability-{version}.xcframework.zip"
+          package = f'''// swift-tools-version: 5.7
+          import PackageDescription
+
+          let package = Package(
+              name: "TelnyxWebRTCKMPBinaries",
+              platforms: [.iOS(.v12)],
+              products: [
+                  .library(
+                      name: "TelnyxObservability",
+                      targets: ["TelnyxObservability"]
+                  )
+              ],
+              targets: [
+                  .binaryTarget(
+                      name: "TelnyxObservability",
+                      url: "https://github.com/team-telnyx/telnyx-webrtc-kmp-binaries/releases/download/{version}/{asset}",
+                      checksum: "{checksum}"
+                  )
+              ]
+          )
+          '''
+          Path("Package.swift").write_text(package)
+          PY
+          swift package dump-package >/dev/null
+      - name: Require configured release reviewers and unused version
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PUBLIC_REPO: ${{ github.repository }}
+        run: |
+          gh api "repos/$PUBLIC_REPO/environments/binary-release" > environment.json
+          python3 - <<'PYCODE'
+          import json
+          env = json.load(open("environment.json"))
+          assert any(r["type"] == "required_reviewers" and r.get("reviewers") for r in env["protection_rules"]), "Configure required release reviewers first"
+          PYCODE
+          gh api --paginate "repos/$PUBLIC_REPO/tags" --jq '.[].name' > tags.txt
+          gh api --paginate "repos/$PUBLIC_REPO/releases" --jq '.[].tag_name' > releases.txt
+          if grep -Fxq -- "$VERSION" tags.txt || grep -Fxq -- "$VERSION" releases.txt; then
+            echo "Version already exists; refusing overwrite"
+            exit 1
+          fi
       - name: Commit and tag package manifest
         env:
           GH_TOKEN: ${{ github.token }}
@@ -93,13 +218,13 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add Package.swift
-          git commit -m "Publish KMP binaries ${{ inputs.version }}"
-          git tag "${{ inputs.version }}"
-          git push origin HEAD:main "${{ inputs.version }}"
+          git commit -m "Publish KMP binaries $VERSION"
+          git tag "$VERSION"
+          git push origin HEAD:main "$VERSION"
       - name: Publish immutable GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "${{ inputs.version }}" incoming/* \
-            --title "KMP binaries ${{ inputs.version }}" \
-            --notes "Built from private source commit ${{ inputs.source_commit }}."
+          gh release create "$VERSION" incoming/* \
+            --title "KMP binaries $VERSION" \
+            --notes "Built from private source commit $SOURCE_COMMIT."
