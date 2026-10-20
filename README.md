@@ -27,11 +27,21 @@ are immutable and must never be overwritten.
 
 Run `publish-approved-release` with `dry_run=true` (the default), the successful
 private source run ID, its exact head SHA, and version. The validation job checks
-the run provenance, downloads with `KMP_SOURCE_REPO_TOKEN`, verifies artifacts,
+the run provenance, downloads with a short-lived GitHub App installation token, verifies artifacts,
 and parses the generated Swift package. It does not upload candidate binaries or
-create commits, tags, or releases. Configure that secret using a narrowly scoped
-credential with Actions read access to the internal source repository; do not
-copy a broad personal CLI token into Actions.
+create commits, tags, or releases. Configure the App with repository **Actions: read-only**, disable webhooks, and
+install it only on `team-telnyx/telnyx-webrtc-kmp-shared-module`.
+
+In **this binaries repository** (not the source repository), configure repository
+Actions secrets:
+- `KMP_SOURCE_APP_ID`: the App ID (a repository variable of the same name is also supported).
+- `KMP_SOURCE_APP_PRIVATE_KEY`: the complete PEM private key generated in the App settings.
+
+Repository secrets are required for the private key because the validation job
+runs without a deployment environment. No App installation on this public repo
+is needed. The pinned official `actions/create-github-app-token` action requests
+only Actions read access to the named source repository, and revokes the generated
+token after each job. No PAT or stored installation token is used.
 
 Publication is a separate job, enabled only with `dry_run=false`, and must only
 be dispatched after explicit approval for that specific release. Before doing so,
