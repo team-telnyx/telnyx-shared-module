@@ -3,6 +3,11 @@ import hashlib
 import importlib.util
 import io
 import json
+import os
+import shutil
+import subprocess
+import tempfile
+import xml.etree.ElementTree as ET
 import unittest
 import zipfile
 from pathlib import Path
@@ -40,6 +45,41 @@ class AndroidPublicationTest(unittest.TestCase):
     def test_complete_bundle_preserves_metadata(self):
         files = module.validate_bundle(*self.bundle())
         self.assertEqual(json.loads(files["publication.json"]), self.metadata)
+
+    @unittest.skipUnless(os.environ.get("TEST_GRADLE_PUBLICATION") == "1", "enable for Java/Gradle integration")
+    def test_gradle_publishes_complete_poms(self):
+        metadata = copy.deepcopy(self.metadata)
+        api = next(m for m in metadata["modules"] if m["name"] == "observability-api")
+        api["dependencies"].append({"module": "observability-core", "scope": "compile"})
+        files = module.validate_bundle(*self.bundle(metadata))
+        root = Path(__file__).resolve().parents[1]
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory)
+            for name in ("build.gradle", "settings.gradle"):
+                shutil.copy2(root / name, project / name)
+            incoming = project / "incoming/android"
+            incoming.mkdir(parents=True)
+            for name, data in files.items():
+                (incoming / name).write_bytes(data)
+            repository = project / "maven"
+            result = subprocess.run([str(root / "gradlew"), "-p", str(project), "publishToMavenLocal",
+                                     "-Pversion=fixture-publication", f"-Dmaven.repo.local={repository}", "--console=plain"],
+                                    capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            group = "com.github.team-telnyx.telnyx-webrtc-kmp-binaries"
+            ns = {"m": "http://maven.apache.org/POM/4.0.0"}
+            for name in module.MODULES:
+                path = repository / group.replace(".", "/") / name / "fixture-publication" / f"{name}-fixture-publication.pom"
+                pom = ET.parse(path).getroot()
+                self.assertEqual(pom.findtext("m:packaging", namespaces=ns), "aar")
+                if name == "observability-api":
+                    deps = pom.findall("m:dependencies/m:dependency", ns)
+                    core = next(d for d in deps if d.findtext("m:artifactId", namespaces=ns) == "observability-core")
+                    self.assertEqual(core.findtext("m:groupId", namespaces=ns), group)
+                    self.assertEqual(core.findtext("m:version", namespaces=ns), "fixture-publication")
+                    kotlin = next(d for d in deps if d.findtext("m:artifactId", namespaces=ns) == "kotlin-stdlib")
+                    self.assertEqual(kotlin.findtext("m:scope", namespaces=ns), "runtime")
+                    self.assertEqual(len(kotlin.findall("m:exclusions/m:exclusion", ns)), 1)
 
     def test_tampered_bundle(self):
         data, release = self.bundle()
