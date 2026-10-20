@@ -1,5 +1,6 @@
 jdk:
   - openjdk17
 install:
+  - python3 -m pip install -r scripts/requirements.txt
   - python3 scripts/prepare-android.py
   - ./gradlew publishToMavenLocal -Pversion="$VERSION"

@@ -6,7 +6,7 @@ import io
 import json
 from pathlib import Path
 import re
-import urllib.request
+import requests
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -67,8 +67,9 @@ def main():
         if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", release["version"]):
             raise ValueError("Invalid binary release version")
         url = f"https://github.com/team-telnyx/telnyx-webrtc-kmp-binaries/releases/download/{release['version']}/telnyx-observability-android-{release['version']}.zip"
-        with urllib.request.urlopen(url, timeout=120) as response:
-            data = response.read()
+        response = requests.get(url, timeout=120)
+        response.raise_for_status()
+        data = response.content
     files = validate_bundle(data, release)
     target = ROOT / "incoming/android"
     target.mkdir(parents=True, exist_ok=True)

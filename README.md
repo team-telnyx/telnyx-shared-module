@@ -43,10 +43,11 @@ new immutable release tag, not `main`.
 ### Validation without publishing a release
 
 Build the four Android release AARs/POMs in the private source repository and run
-`scripts/export-android-publication.py <candidate-version> <bundle-path>`.
+`scripts/export-android-publication.py <candidate-version> <bundle-path> <full-source-commit>`.
 Use the candidate's `artifacts.json` and bundle locally:
 
 ```bash
+python3 -m pip install -r scripts/requirements.txt
 python3 scripts/prepare-android.py --candidate-dir /path/to/candidate
 ./gradlew publishToMavenLocal -Pversion=local-validation -Dmaven.repo.local=/tmp/kmp-maven
 KMP_MAVEN_REPO=/tmp/kmp-maven ./gradlew -p verification/android-consumer \

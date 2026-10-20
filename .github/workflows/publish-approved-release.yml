@@ -117,6 +117,8 @@ jobs:
         with:
           distribution: temurin
           java-version: 17
+      - name: Install Android downloader dependencies
+        run: python3 -m pip install -r scripts/requirements.txt
       - name: Validate complete Android publication locally
         run: |
           if test -f "incoming/telnyx-observability-android-$VERSION.zip"; then

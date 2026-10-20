@@ -10,6 +10,7 @@ import tempfile
 import xml.etree.ElementTree as ET
 import unittest
 import zipfile
+from unittest.mock import patch, Mock
 from pathlib import Path
 
 spec = importlib.util.spec_from_file_location("prepare_android", Path(__file__).resolve().parents[1] / "scripts/prepare-android.py")
@@ -41,6 +42,39 @@ class AndroidPublicationTest(unittest.TestCase):
         data = zip_bytes(files)
         release = {"version": "1.2.3", "source_commit": "a" * 40, "sha256": hashlib.sha256(data).hexdigest()}
         return data, release
+
+    def test_release_download_uses_fixed_https_and_checks_status(self):
+        data, release = self.bundle()
+        response = Mock(content=data)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "android-release.json").write_text(json.dumps(release))
+            with patch.object(module, "ROOT", root), patch("sys.argv", ["prepare-android.py"]), patch.object(module.requests, "get", return_value=response) as get:
+                module.main()
+            get.assert_called_once_with("https://github.com/team-telnyx/telnyx-webrtc-kmp-binaries/releases/download/1.2.3/telnyx-observability-android-1.2.3.zip", timeout=120)
+            response.raise_for_status.assert_called_once_with()
+            self.assertTrue((root / "incoming/android/publication.json").is_file())
+
+    def test_version_cannot_inject_download_url(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "android-release.json").write_text(json.dumps({"version": "file:///etc/passwd"}))
+            with patch.object(module, "ROOT", root), patch("sys.argv", ["prepare-android.py"]), patch.object(module.requests, "get") as get:
+                with self.assertRaisesRegex(ValueError, "Invalid binary release version"):
+                    module.main()
+                get.assert_not_called()
+
+    def test_failed_download_does_not_write_artifacts(self):
+        _, release = self.bundle()
+        response = Mock()
+        response.raise_for_status.side_effect = module.requests.HTTPError("404")
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "android-release.json").write_text(json.dumps(release))
+            with patch.object(module, "ROOT", root), patch("sys.argv", ["prepare-android.py"]), patch.object(module.requests, "get", return_value=response):
+                with self.assertRaises(module.requests.HTTPError):
+                    module.main()
+            self.assertFalse((root / "incoming").exists())
 
     def test_complete_bundle_preserves_metadata(self):
         files = module.validate_bundle(*self.bundle())
