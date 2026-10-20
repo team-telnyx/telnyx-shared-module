@@ -36,9 +36,6 @@ In **this binaries repository** (not the source repository), configure repositor
 Actions secrets:
 - `KMP_SOURCE_APP_ID`: the App ID (a repository variable of the same name is also supported).
 - `KMP_SOURCE_APP_PRIVATE_KEY`: the complete PEM private key generated in the App settings.
-  For the existing setup, the PEM may instead be stored in `KMP_SOURCE_REPO_TOKEN`;
-  this legacy name is accepted as a private-key fallback, not as a PAT. The
-  explicitly named private-key secret takes precedence when both are present.
 
 Repository secrets are required for the private key because the validation job
 runs without a deployment environment. No App installation on this public repo
