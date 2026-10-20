@@ -39,11 +39,20 @@ jobs:
           assert re.fullmatch(r"[0-9]+", os.environ["SOURCE_RUN_ID"])
           assert re.fullmatch(r"[0-9a-f]{40}", os.environ["SOURCE_COMMIT"])
           PYCODE
+      - name: Create source artifact read token
+        id: source-token
+        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2
+        with:
+          app-id: ${{ secrets.KMP_SOURCE_APP_ID || vars.KMP_SOURCE_APP_ID }}
+          private-key: ${{ secrets.KMP_SOURCE_APP_PRIVATE_KEY }}
+          owner: team-telnyx
+          repositories: telnyx-webrtc-kmp-shared-module
+          permission-actions: read
       - name: Download artifacts from the private source workflow
         env:
-          GH_TOKEN: ${{ secrets.KMP_SOURCE_REPO_TOKEN }}
+          GH_TOKEN: ${{ steps.source-token.outputs.token }}
         run: |
-          test -n "$GH_TOKEN" || { echo "Configure KMP_SOURCE_REPO_TOKEN with source Actions read access"; exit 1; }
+          test -n "$GH_TOKEN" || { echo "GitHub App source artifact token was not generated"; exit 1; }
           gh run view "$SOURCE_RUN_ID" --repo team-telnyx/telnyx-webrtc-kmp-shared-module \
             --json conclusion,headSha,workflowName > run.json
           python3 - <<'PYCODE'
@@ -129,11 +138,20 @@ jobs:
           assert re.fullmatch(r"[0-9]+", os.environ["SOURCE_RUN_ID"])
           assert re.fullmatch(r"[0-9a-f]{40}", os.environ["SOURCE_COMMIT"])
           PYCODE
+      - name: Create source artifact read token
+        id: source-token
+        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2
+        with:
+          app-id: ${{ secrets.KMP_SOURCE_APP_ID || vars.KMP_SOURCE_APP_ID }}
+          private-key: ${{ secrets.KMP_SOURCE_APP_PRIVATE_KEY }}
+          owner: team-telnyx
+          repositories: telnyx-webrtc-kmp-shared-module
+          permission-actions: read
       - name: Download artifacts from the private source workflow
         env:
-          GH_TOKEN: ${{ secrets.KMP_SOURCE_REPO_TOKEN }}
+          GH_TOKEN: ${{ steps.source-token.outputs.token }}
         run: |
-          test -n "$GH_TOKEN" || { echo "Configure KMP_SOURCE_REPO_TOKEN with source Actions read access"; exit 1; }
+          test -n "$GH_TOKEN" || { echo "GitHub App source artifact token was not generated"; exit 1; }
           gh run view "$SOURCE_RUN_ID" --repo team-telnyx/telnyx-webrtc-kmp-shared-module \
             --json conclusion,headSha,workflowName > run.json
           python3 - <<'PYCODE'
