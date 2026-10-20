@@ -9,7 +9,9 @@ Swift Package Manager consumers use this repository. Each immutable GitHub
 release contains a versioned `TelnyxObservability.xcframework.zip`; the tagged
 `Package.swift` references that asset and pins its SwiftPM checksum.
 
-No release exists yet. Publication is manual and approval-gated.
+Publication is manual and approval-gated. Consumers must select an exact release version.
+The release manifest is committed to its immutable tag; the workflow never pushes
+to PR-protected `main`.
 
 ## Android
 
@@ -47,3 +49,8 @@ Publication is a separate job, enabled only with `dry_run=false`, and must only
 be dispatched after explicit approval for that specific release. Before doing so,
 configure the `binary-release` environment with required reviewers. The workflow
 refuses publication without reviewers or when the version already exists.
+
+If a run creates a tag but fails before release upload, do not rerun blindly or
+move/delete the tag. Verify its manifest and checksum against the original source
+candidate, then complete the release on that existing tag after the release
+approval. A GitHub release is separate from JitPack/Maven publication.
