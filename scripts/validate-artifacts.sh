@@ -25,8 +25,11 @@ if not isinstance(version, str) or not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", v
 if not re.fullmatch(r"[0-9a-f]{40}", manifest["source_commit"]):
     raise SystemExit("invalid source commit")
 expected = {f"TelnyxObservability-{version}.xcframework.zip", f"telnyx-observability-{version}.aar"}
-if len(manifest["artifacts"]) != 2 or {item["name"] for item in manifest["artifacts"]} != expected:
-    raise SystemExit("expected exactly the versioned XCFramework ZIP and Android AAR")
+bundle_name = f"telnyx-observability-android-{version}.zip"
+if any(item["name"] == bundle_name for item in manifest["artifacts"]):
+    expected.add(bundle_name)
+if len(manifest["artifacts"]) != len(expected) or {item["name"] for item in manifest["artifacts"]} != expected:
+    raise SystemExit("expected versioned XCFramework ZIP, Android AAR and optional complete Android bundle")
 if {path.name for path in root.iterdir()} != expected | {"artifacts.json"}:
     raise SystemExit("unexpected files in artifact directory")
 for item in manifest["artifacts"]:
@@ -51,5 +54,11 @@ for item in manifest["artifacts"]:
             for required_slice in required_slices:
                 if not any(required_slice in name for name in names):
                     raise SystemExit(f"missing {required_slice}: {path.name}")
+    if path.name == bundle_name:
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("prepare_android", pathlib.Path("scripts/prepare-android.py"))
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        module.validate_bundle(path.read_bytes(), {"version": version, "source_commit": manifest["source_commit"], "sha256": digest})
 print(f"validated {len(manifest['artifacts'])} artifacts for {manifest['version']}")
 PY

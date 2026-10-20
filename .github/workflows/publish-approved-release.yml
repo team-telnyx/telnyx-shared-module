@@ -113,6 +113,16 @@ jobs:
           Path("Package.swift").write_text(package)
           PY
           swift package dump-package >/dev/null
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - name: Validate complete Android publication locally
+        run: |
+          if test -f "incoming/telnyx-observability-android-$VERSION.zip"; then
+            python3 scripts/prepare-android.py --candidate-dir incoming
+            ./gradlew publishToMavenLocal -Pversion="$VERSION"
+          fi
       - name: Dry-run result
         run: echo "Candidate verified; no files committed, uploaded, tagged or released."
 
@@ -212,6 +222,19 @@ jobs:
           Path("Package.swift").write_text(package)
           PY
           swift package dump-package >/dev/null
+      - name: Pin Android publication for this immutable release
+        run: |
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          manifest = json.loads(Path("incoming/artifacts.json").read_text())
+          name = f"telnyx-observability-android-{os.environ['VERSION']}.zip"
+          asset = next(a for a in manifest["artifacts"] if a["name"] == name)
+          Path("android-release.json").write_text(json.dumps({
+              "version": manifest["version"], "source_commit": manifest["source_commit"],
+              "sha256": asset["sha256"]
+          }, indent=2) + "\n")
+          PY
       - name: Require configured release reviewers and unused version
         env:
           GH_TOKEN: ${{ github.token }}
@@ -235,7 +258,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add Package.swift
+          git add Package.swift android-release.json
           git commit -m "Publish KMP binaries $VERSION"
           git tag "$VERSION"
           # Publish the versioned manifest only through its immutable tag.

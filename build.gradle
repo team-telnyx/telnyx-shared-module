@@ -1,0 +1,48 @@
+import groovy.json.JsonSlurper
+
+// No Android/Kotlin compiler or private source checkout is needed on JitPack.
+def publicationFile = file('incoming/android/publication.json')
+if (!publicationFile.isFile()) {
+    throw new GradleException('Run python3 scripts/prepare-android.py before Gradle publication')
+}
+def publication = new JsonSlurper().parse(publicationFile)
+def requestedVersion = providers.gradleProperty('version').orElse(providers.environmentVariable('VERSION')).getOrElse(publication.version)
+def publicGroup = 'com.github.team-telnyx.telnyx-webrtc-kmp-binaries'
+subprojects {
+    apply plugin: 'maven-publish'
+    group = publicGroup
+    version = requestedVersion
+    def module = publication.modules.find { it.name == project.name }
+    if (module == null) throw new GradleException("Missing publication: ${project.name}")
+    publishing {
+        publications {
+            release(MavenPublication) {
+                artifactId = project.name
+                artifact(rootProject.file("incoming/android/${module.file}"))
+                pom {
+                    name = "Telnyx ${project.name}"
+                    description = 'Precompiled Telnyx WebRTC shared Android module'
+                    url = 'https://github.com/team-telnyx/telnyx-webrtc-kmp-binaries'
+                    withXml {
+                        def dependencies = asNode().appendNode('dependencies')
+                        module.dependencies.each { dep ->
+                            def node = dependencies.appendNode('dependency')
+                            node.appendNode('groupId', dep.module ? publicGroup : dep.group)
+                            node.appendNode('artifactId', dep.module ?: dep.artifact)
+                            node.appendNode('version', dep.module ? requestedVersion : dep.version)
+                            node.appendNode('scope', dep.scope)
+                            if (dep.exclusions) {
+                                def exclusions = node.appendNode('exclusions')
+                                dep.exclusions.each { rule ->
+                                    def exclusion = exclusions.appendNode('exclusion')
+                                    exclusion.appendNode('groupId', rule.group)
+                                    exclusion.appendNode('artifactId', rule.artifact)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
