@@ -9,7 +9,7 @@ on:
         default: true
         required: true
       version:
-        description: Approved semantic version without a v prefix
+        description: Approved patch-only version on the 0.2.x line, without a v prefix
         required: true
       source_run_id:
         description: Successful shared-module packaging workflow run ID
@@ -35,7 +35,7 @@ jobs:
         run: |
           python3 - <<'PYCODE'
           import os, re
-          assert re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", os.environ["VERSION"])
+          assert re.fullmatch(r"0\.2\.[0-9]+", os.environ["VERSION"])
           assert re.fullmatch(r"[0-9]+", os.environ["SOURCE_RUN_ID"])
           assert re.fullmatch(r"[0-9a-f]{40}", os.environ["SOURCE_COMMIT"])
           PYCODE
@@ -126,7 +126,7 @@ jobs:
         run: |
           python3 - <<'PYCODE'
           import os, re
-          assert re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", os.environ["VERSION"])
+          assert re.fullmatch(r"0\.2\.[0-9]+", os.environ["VERSION"])
           assert re.fullmatch(r"[0-9]+", os.environ["SOURCE_RUN_ID"])
           assert re.fullmatch(r"[0-9a-f]{40}", os.environ["SOURCE_COMMIT"])
           PYCODE
