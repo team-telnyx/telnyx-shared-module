@@ -12,6 +12,7 @@ import unittest
 import zipfile
 from unittest.mock import patch, Mock
 from pathlib import Path
+from urllib.error import HTTPError
 
 spec = importlib.util.spec_from_file_location("prepare_android", Path(__file__).resolve().parents[1] / "scripts/prepare-android.py")
 module = importlib.util.module_from_spec(spec)
@@ -45,34 +46,35 @@ class AndroidPublicationTest(unittest.TestCase):
 
     def test_release_download_uses_fixed_https_and_checks_status(self):
         data, release = self.bundle()
-        response = Mock(content=data)
+        response = Mock()
+        response.read.return_value = data
+        response.__enter__ = Mock(return_value=response)
+        response.__exit__ = Mock(return_value=False)
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             (root / "android-release.json").write_text(json.dumps(release))
-            with patch.object(module, "ROOT", root), patch("sys.argv", ["prepare-android.py"]), patch.object(module.requests, "get", return_value=response) as get:
+            with patch.object(module, "ROOT", root), patch("sys.argv", ["prepare-android.py"]), patch.object(module, "urlopen", return_value=response) as get:
                 module.main()
             get.assert_called_once_with("https://github.com/team-telnyx/telnyx-shared-module/releases/download/1.2.3/telnyx-observability-android-1.2.3.zip", timeout=120)
-            response.raise_for_status.assert_called_once_with()
             self.assertTrue((root / "incoming/android/publication.json").is_file())
 
     def test_version_cannot_inject_download_url(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             (root / "android-release.json").write_text(json.dumps({"version": "file:///etc/passwd"}))
-            with patch.object(module, "ROOT", root), patch("sys.argv", ["prepare-android.py"]), patch.object(module.requests, "get") as get:
+            with patch.object(module, "ROOT", root), patch("sys.argv", ["prepare-android.py"]), patch.object(module, "urlopen") as get:
                 with self.assertRaisesRegex(ValueError, "Invalid binary release version"):
                     module.main()
                 get.assert_not_called()
 
     def test_failed_download_does_not_write_artifacts(self):
         _, release = self.bundle()
-        response = Mock()
-        response.raise_for_status.side_effect = module.requests.HTTPError("404")
+        error = HTTPError("https://github.com/", 404, "Not Found", {}, None)
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             (root / "android-release.json").write_text(json.dumps(release))
-            with patch.object(module, "ROOT", root), patch("sys.argv", ["prepare-android.py"]), patch.object(module.requests, "get", return_value=response):
-                with self.assertRaises(module.requests.HTTPError):
+            with patch.object(module, "ROOT", root), patch("sys.argv", ["prepare-android.py"]), patch.object(module, "urlopen", side_effect=error):
+                with self.assertRaises(HTTPError):
                     module.main()
             self.assertFalse((root / "incoming").exists())
 
