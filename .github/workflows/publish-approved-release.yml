@@ -67,6 +67,11 @@ jobs:
             --repo team-telnyx/telnyx-webrtc-kmp-shared-module \
             --name kmp-release-candidate \
             --dir incoming
+      - name: Install Android downloader dependencies
+        run: |
+          python3 -m venv "$RUNNER_TEMP/distribution-venv"
+          "$RUNNER_TEMP/distribution-venv/bin/pip" install -r scripts/requirements.txt
+          echo "$RUNNER_TEMP/distribution-venv/bin" >> "$GITHUB_PATH"
       - name: Validate manifest and provenance
         run: |
           scripts/validate-artifacts.sh incoming
@@ -87,11 +92,6 @@ jobs:
         with:
           distribution: temurin
           java-version: 17
-      - name: Install Android downloader dependencies
-        run: |
-          python3 -m venv "$RUNNER_TEMP/distribution-venv"
-          "$RUNNER_TEMP/distribution-venv/bin/pip" install -r scripts/requirements.txt
-          echo "$RUNNER_TEMP/distribution-venv/bin" >> "$GITHUB_PATH"
       - name: Validate complete Android publication locally
         run: |
           if test -f "incoming/telnyx-observability-android-$VERSION.zip"; then
@@ -158,6 +158,11 @@ jobs:
             --repo team-telnyx/telnyx-webrtc-kmp-shared-module \
             --name kmp-release-candidate \
             --dir incoming
+      - name: Install Android downloader dependencies
+        run: |
+          python3 -m venv "$RUNNER_TEMP/distribution-venv"
+          "$RUNNER_TEMP/distribution-venv/bin/pip" install -r scripts/requirements.txt
+          echo "$RUNNER_TEMP/distribution-venv/bin" >> "$GITHUB_PATH"
       - name: Validate manifest and provenance
         run: |
           scripts/validate-artifacts.sh incoming
