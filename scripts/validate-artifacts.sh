@@ -50,6 +50,9 @@ for item in manifest["artifacts"]:
                 raise SystemExit(f"unsafe ZIP path: {path.name}")
             if any("__MACOSX" in pathlib.PurePosixPath(name).parts for name in names):
                 raise SystemExit(f"unexpected macOS metadata: {path.name}")
+            framework_root = "TelnyxSharedModule.xcframework/"
+            if not names or any(not name.startswith(framework_root) for name in names):
+                raise SystemExit("XCFramework must export TelnyxSharedModule under its matching root")
             required_slices = ("ios-arm64/", "ios-arm64_x86_64-simulator/")
             for required_slice in required_slices:
                 if not any(required_slice in name for name in names):

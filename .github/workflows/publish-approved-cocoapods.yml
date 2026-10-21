@@ -40,8 +40,8 @@ jobs:
           COCOAPODS_TRUNK_TOKEN: ${{ secrets.COCOAPODS_TRUNK_TOKEN }}
         run: |
           test -n "$COCOAPODS_TRUNK_TOKEN"
-          pod trunk me >/dev/null
-          echo "CocoaPods publishing session verified"
+          pod trunk me | grep -F 'Email' | grep -Fq 'cocoapods+official@telnyx.com'
+          echo "Official CocoaPods publishing session verified"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: validated-podspec

@@ -103,8 +103,8 @@ jobs:
           COCOAPODS_TRUNK_TOKEN: ${{ secrets.COCOAPODS_TRUNK_TOKEN }}
         run: |
           test -n "$COCOAPODS_TRUNK_TOKEN"
-          pod trunk me >/dev/null
-          echo "CocoaPods publishing session verified"
+          pod trunk me | grep -F 'Email' | grep -Fq 'cocoapods+official@telnyx.com'
+          echo "Official CocoaPods publishing session verified"
       - name: Dry-run result
         run: echo "Candidate verified; no files committed, uploaded, tagged or released."
 

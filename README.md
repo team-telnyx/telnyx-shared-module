@@ -108,8 +108,8 @@ in a public Specs repository, or let direct consumers reference this Git repo's
 versioned podspec. Native SDK transitive pod dependencies require the Specs
 repository to be configured by the consumer; a podspec cannot embed a Git URL in
 `spec.dependency`. Flutter/RN can instead vendor the framework through their
-existing package distribution where appropriate. No pod or release is published
-by this implementation.
+existing package distribution where appropriate. Adding these workflows publishes nothing; publication requires explicit
+approval for the specific version.
 
 ## Integrity and provenance
 
