@@ -24,7 +24,7 @@ import PackageDescription
 
 let package = Package(
     name: "TelnyxSharedModule",
-    platforms: [.iOS(.v13)],
+    platforms: [.iOS(.v12)],
     products: [.library(name: "TelnyxSharedModule", targets: ["TelnyxSharedModule"])],
     targets: [.binaryTarget(name: "TelnyxSharedModule", url: "{url}", checksum: "{checksum}")]
 )
@@ -37,7 +37,7 @@ let package = Package(
   s.author = {{ 'Telnyx LLC' => 'cocoapods+official@telnyx.com' }}
   s.license = {{ :type => 'Proprietary', :text => 'Copyright Telnyx LLC. All rights reserved.' }}
   s.source = {{ :http => '{url}', :sha256 => '{checksum}' }}
-  s.ios.deployment_target = '13.0'
+  s.ios.deployment_target = '12.0'
   s.vendored_frameworks = 'TelnyxSharedModule.xcframework'
   s.static_framework = true
   s.libraries = 'c++'

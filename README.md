@@ -151,7 +151,7 @@ approval. A GitHub release is separate from JitPack/Maven publication.
 
 `scripts/render-apple-metadata.py <verified-candidate-directory>` generates the
 Swift package and binary podspec from the same version, URL and SHA-256. The
-podspec ships in the immutable version tag. New Apple builds require iOS 13+.
+podspec ships in the immutable version tag. Apple builds preserve the existing iOS 12+ minimum.
 The closed-source binary retains proprietary copyright; no open-source license
 is granted by publishing it.
 
