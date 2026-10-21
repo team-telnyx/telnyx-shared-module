@@ -51,7 +51,7 @@ class AndroidPublicationTest(unittest.TestCase):
             (root / "android-release.json").write_text(json.dumps(release))
             with patch.object(module, "ROOT", root), patch("sys.argv", ["prepare-android.py"]), patch.object(module.requests, "get", return_value=response) as get:
                 module.main()
-            get.assert_called_once_with("https://github.com/team-telnyx/telnyx-webrtc-kmp-binaries/releases/download/1.2.3/telnyx-observability-android-1.2.3.zip", timeout=120)
+            get.assert_called_once_with("https://github.com/team-telnyx/telnyx-shared-module/releases/download/1.2.3/telnyx-observability-android-1.2.3.zip", timeout=120)
             response.raise_for_status.assert_called_once_with()
             self.assertTrue((root / "incoming/android/publication.json").is_file())
 
@@ -100,7 +100,7 @@ class AndroidPublicationTest(unittest.TestCase):
                                      "-Pversion=fixture-publication", f"-Dmaven.repo.local={repository}", "--console=plain"],
                                     capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-            group = "com.github.team-telnyx.telnyx-webrtc-kmp-binaries"
+            group = "com.github.team-telnyx.telnyx-shared-module"
             ns = {"m": "http://maven.apache.org/POM/4.0.0"}
             for name in module.MODULES:
                 path = repository / group.replace(".", "/") / name / "fixture-publication" / f"{name}-fixture-publication.pom"

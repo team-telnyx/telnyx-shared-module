@@ -5,7 +5,7 @@ dependencyResolutionManagement {
         mavenCentral()
         maven {
             url = uri(System.getenv('KMP_MAVEN_REPO') ?: 'https://jitpack.io')
-            content { includeGroup 'com.github.team-telnyx.telnyx-webrtc-kmp-binaries' }
+            content { includeGroup 'com.github.team-telnyx.telnyx-shared-module' }
         }
     }
 }

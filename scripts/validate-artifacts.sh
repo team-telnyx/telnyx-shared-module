@@ -24,7 +24,7 @@ if not isinstance(version, str) or not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", v
     raise SystemExit("invalid version")
 if not re.fullmatch(r"[0-9a-f]{40}", manifest["source_commit"]):
     raise SystemExit("invalid source commit")
-expected = {f"TelnyxObservability-{version}.xcframework.zip", f"telnyx-observability-{version}.aar"}
+expected = {f"TelnyxSharedModule-{version}.xcframework.zip", f"telnyx-observability-{version}.aar"}
 bundle_name = f"telnyx-observability-android-{version}.zip"
 if any(item["name"] == bundle_name for item in manifest["artifacts"]):
     expected.add(bundle_name)
@@ -50,6 +50,9 @@ for item in manifest["artifacts"]:
                 raise SystemExit(f"unsafe ZIP path: {path.name}")
             if any("__MACOSX" in pathlib.PurePosixPath(name).parts for name in names):
                 raise SystemExit(f"unexpected macOS metadata: {path.name}")
+            framework_root = "TelnyxSharedModule.xcframework/"
+            if not names or any(not name.startswith(framework_root) for name in names):
+                raise SystemExit("XCFramework must export TelnyxSharedModule under its matching root")
             required_slices = ("ios-arm64/", "ios-arm64_x86_64-simulator/")
             for required_slice in required_slices:
                 if not any(required_slice in name for name in names):
