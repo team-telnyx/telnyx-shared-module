@@ -66,7 +66,7 @@ def main():
         release = json.loads(config.read_text())
         if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", release["version"]):
             raise ValueError("Invalid binary release version")
-        url = f"https://github.com/team-telnyx/telnyx-webrtc-kmp-binaries/releases/download/{release['version']}/telnyx-observability-android-{release['version']}.zip"
+        url = f"https://github.com/team-telnyx/telnyx-shared-module/releases/download/{release['version']}/telnyx-observability-android-{release['version']}.zip"
         response = requests.get(url, timeout=120)
         response.raise_for_status()
         data = response.content

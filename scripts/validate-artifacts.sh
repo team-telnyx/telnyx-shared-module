@@ -24,7 +24,7 @@ if not isinstance(version, str) or not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", v
     raise SystemExit("invalid version")
 if not re.fullmatch(r"[0-9a-f]{40}", manifest["source_commit"]):
     raise SystemExit("invalid source commit")
-expected = {f"TelnyxObservability-{version}.xcframework.zip", f"telnyx-observability-{version}.aar"}
+expected = {f"TelnyxSharedModule-{version}.xcframework.zip", f"telnyx-observability-{version}.aar"}
 bundle_name = f"telnyx-observability-android-{version}.zip"
 if any(item["name"] == bundle_name for item in manifest["artifacts"]):
     expected.add(bundle_name)

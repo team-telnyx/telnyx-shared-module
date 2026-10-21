@@ -12,7 +12,7 @@ on:
         description: Approved semantic version without a v prefix
         required: true
       source_run_id:
-        description: Successful KMP packaging workflow run ID
+        description: Successful shared-module packaging workflow run ID
         required: true
       source_commit:
         description: Full source commit SHA expected in artifacts.json
@@ -76,43 +76,13 @@ jobs:
           assert manifest["version"] == os.environ["VERSION"]
           assert manifest["source_commit"] == os.environ["SOURCE_COMMIT"]
           PY
-      - name: Materialize the immutable Swift package manifest
+      - name: Materialize matching SwiftPM and CocoaPods metadata
         env:
           VERSION: ${{ inputs.version }}
         run: |
-          python3 - <<'PY'
-          import json
-          import os
-          from pathlib import Path
-
-          version = os.environ["VERSION"]
-          manifest = json.loads(Path("incoming/artifacts.json").read_text())
-          checksum = manifest["swiftpm_checksum"]
-          asset = f"TelnyxObservability-{version}.xcframework.zip"
-          package = f'''// swift-tools-version: 5.7
-          import PackageDescription
-
-          let package = Package(
-              name: "TelnyxWebRTCKMPBinaries",
-              platforms: [.iOS(.v12)],
-              products: [
-                  .library(
-                      name: "TelnyxObservability",
-                      targets: ["TelnyxObservability"]
-                  )
-              ],
-              targets: [
-                  .binaryTarget(
-                      name: "TelnyxObservability",
-                      url: "https://github.com/team-telnyx/telnyx-webrtc-kmp-binaries/releases/download/{version}/{asset}",
-                      checksum: "{checksum}"
-                  )
-              ]
-          )
-          '''
-          Path("Package.swift").write_text(package)
-          PY
+          python3 scripts/render-apple-metadata.py incoming
           swift package dump-package >/dev/null
+          pod ipc spec TelnyxSharedModule.podspec >/dev/null
       - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
         with:
           distribution: temurin
@@ -125,6 +95,13 @@ jobs:
             python3 scripts/prepare-android.py --candidate-dir incoming
             ./gradlew publishToMavenLocal -Pversion="$VERSION"
           fi
+      - name: Verify configured CocoaPods publishing session
+        env:
+          COCOAPODS_TRUNK_TOKEN: ${{ secrets.COCOAPODS_TRUNK_TOKEN }}
+        run: |
+          test -n "$COCOAPODS_TRUNK_TOKEN"
+          pod trunk me >/dev/null
+          echo "CocoaPods publishing session verified"
       - name: Dry-run result
         run: echo "Candidate verified; no files committed, uploaded, tagged or released."
 
@@ -187,43 +164,13 @@ jobs:
           assert manifest["version"] == os.environ["VERSION"]
           assert manifest["source_commit"] == os.environ["SOURCE_COMMIT"]
           PY
-      - name: Materialize the immutable Swift package manifest
+      - name: Materialize matching SwiftPM and CocoaPods metadata
         env:
           VERSION: ${{ inputs.version }}
         run: |
-          python3 - <<'PY'
-          import json
-          import os
-          from pathlib import Path
-
-          version = os.environ["VERSION"]
-          manifest = json.loads(Path("incoming/artifacts.json").read_text())
-          checksum = manifest["swiftpm_checksum"]
-          asset = f"TelnyxObservability-{version}.xcframework.zip"
-          package = f'''// swift-tools-version: 5.7
-          import PackageDescription
-
-          let package = Package(
-              name: "TelnyxWebRTCKMPBinaries",
-              platforms: [.iOS(.v12)],
-              products: [
-                  .library(
-                      name: "TelnyxObservability",
-                      targets: ["TelnyxObservability"]
-                  )
-              ],
-              targets: [
-                  .binaryTarget(
-                      name: "TelnyxObservability",
-                      url: "https://github.com/team-telnyx/telnyx-webrtc-kmp-binaries/releases/download/{version}/{asset}",
-                      checksum: "{checksum}"
-                  )
-              ]
-          )
-          '''
-          Path("Package.swift").write_text(package)
-          PY
+          python3 scripts/render-apple-metadata.py incoming
           swift package dump-package >/dev/null
+          pod ipc spec TelnyxSharedModule.podspec >/dev/null
       - name: Pin Android publication for this immutable release
         run: |
           python3 - <<'PY'
@@ -260,8 +207,8 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add Package.swift android-release.json
-          git commit -m "Publish KMP binaries $VERSION"
+          git add Package.swift TelnyxSharedModule.podspec android-release.json
+          git commit -m "Publish Telnyx Shared Module $VERSION"
           git tag "$VERSION"
           # Publish the versioned manifest only through its immutable tag.
           # main is PR-protected; never combine a main push and tag push.
@@ -271,5 +218,5 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "$VERSION" incoming/* --verify-tag \
-            --title "KMP binaries $VERSION" \
+            --title "Telnyx Shared Module $VERSION" \
             --notes "Built from private source commit $SOURCE_COMMIT."

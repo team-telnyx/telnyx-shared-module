@@ -1,2 +1,2 @@
-rootProject.name = 'telnyx-webrtc-kmp-binaries'
+rootProject.name = 'telnyx-shared-module'
 include 'shared-foundation', 'observability-contract', 'observability-core', 'observability-api'

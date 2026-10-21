@@ -25,4 +25,4 @@ jobs:
       - run: python3 -m unittest discover -s tests -v
         env:
           TEST_GRADLE_PUBLICATION: '1'
-      - run: python3 -m py_compile scripts/prepare-android.py
+      - run: python3 -m py_compile scripts/prepare-android.py scripts/render-apple-metadata.py

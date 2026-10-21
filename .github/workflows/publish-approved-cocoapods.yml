@@ -1,0 +1,62 @@
+name: publish-approved-cocoapods
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Exact existing GitHub release version approved for CocoaPods
+        required: true
+      dry_run:
+        description: Validate only; Trunk publication requires explicit approval
+        type: boolean
+        default: true
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: macos-latest
+    env:
+      VERSION: ${{ inputs.version }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Validate version and existing release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PUBLIC_REPO: ${{ github.repository }}
+        run: |
+          python3 - <<'PY'
+          import os, re
+          assert re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", os.environ["VERSION"])
+          PY
+          gh release view "$VERSION" --repo "$PUBLIC_REPO" --json isDraft --jq '.isDraft == false' | grep -qx true
+          gh api "repos/$PUBLIC_REPO/contents/TelnyxSharedModule.podspec?ref=$VERSION" --jq .content | base64 --decode > TelnyxSharedModule.podspec
+      - name: Validate checksum-pinned public binary podspec
+        run: pod spec lint TelnyxSharedModule.podspec --allow-warnings
+      - name: Verify CocoaPods publishing session
+        env:
+          COCOAPODS_TRUNK_TOKEN: ${{ secrets.COCOAPODS_TRUNK_TOKEN }}
+        run: |
+          test -n "$COCOAPODS_TRUNK_TOKEN"
+          pod trunk me >/dev/null
+          echo "CocoaPods publishing session verified"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: validated-podspec
+          path: TelnyxSharedModule.podspec
+
+  publish:
+    if: ${{ !inputs.dry_run }}
+    needs: validate
+    environment: binary-release
+    runs-on: macos-latest
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: validated-podspec
+      - name: Publish the approved validated podspec
+        env:
+          COCOAPODS_TRUNK_TOKEN: ${{ secrets.COCOAPODS_TRUNK_TOKEN }}
+        run: pod trunk push TelnyxSharedModule.podspec --allow-warnings
