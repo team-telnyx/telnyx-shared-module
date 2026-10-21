@@ -17,3 +17,12 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - run: bash -n scripts/validate-artifacts.sh
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - run: python3 -m pip install -r scripts/requirements.txt
+      - run: python3 -m unittest discover -s tests -v
+        env:
+          TEST_GRADLE_PUBLICATION: '1'
+      - run: python3 -m py_compile scripts/prepare-android.py

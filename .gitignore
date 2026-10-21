@@ -2,3 +2,6 @@
 .swiftpm/
 incoming/
 release-assets/
+.gradle/
+**/build/
+__pycache__/

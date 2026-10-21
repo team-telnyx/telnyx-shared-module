@@ -15,9 +15,76 @@ to PR-protected `main`.
 
 ## Android
 
-Android artifacts may also be attached to releases for inspection or manual
-integration. Normal Android SDK consumption remains transitive through the
-published Telnyx SDK dependency, so customers should not download AARs by hand.
+JitPack runs `jitpack.yml`: download the immutable Android bundle pinned in
+`android-release.json`, verify its checksum and per-AAR hashes/provenance, and
+run Gradle `publishToMavenLocal`. No private source or credentials reach JitPack.
+This is Android AAR/POM publication, not a common-source Kotlin Multiplatform
+publication. Four modules are published with exact internal version pins:
+`shared-foundation`, `observability-contract`, `observability-core`, and
+`observability-api`. External dependencies, runtime scopes and exclusions come
+from the private build's generated Android release POMs.
+
+After a complete release is approved and published, the native Android SDK adds:
+
+```kotlin
+repositories { maven { url = uri("https://jitpack.io") } }
+dependencies {
+    implementation("com.github.team-telnyx.telnyx-webrtc-kmp-binaries:observability-api:<approved-version>")
+}
+```
+
+Customers continue installing the native SDK; KMP modules resolve transitively.
+The existing `0.1.0` release does **not** contain the complete Android bundle or
+JitPack setup and cannot be used for this path. Do not move its tag or replace
+its assets. A new candidate and separately approved release are required.
+`android-release.json` is generated and committed with `Package.swift` to the
+new immutable release tag, not `main`.
+
+### Validation without publishing a release
+
+Build the four Android release AARs/POMs in the private source repository and run
+`scripts/export-android-publication.py <candidate-version> <bundle-path> <full-source-commit>`.
+Use the candidate's `artifacts.json` and bundle locally:
+
+```bash
+python3 -m pip install -r scripts/requirements.txt
+python3 scripts/prepare-android.py --candidate-dir /path/to/candidate
+./gradlew publishToMavenLocal -Pversion=local-validation -Dmaven.repo.local=/tmp/kmp-maven
+KMP_MAVEN_REPO=/tmp/kmp-maven ./gradlew -p verification/android-consumer \
+  assembleRelease dependencies --configuration releaseRuntimeClasspath \
+  -PsmokeVersion=local-validation
+```
+
+The consumer only declares the API dependency and compiles a factory call whose
+return type is in core. Use an empty Maven directory for a clean check.
+After publication, omit `KMP_MAVEN_REPO` and use the approved version in
+`smokeVersion` to test actual JitPack resolution; requesting that version can
+trigger JitPack's build/publication. This hosted check is a release step and
+requires the corresponding approval. The native SDK should pin that exact version.
+
+## CocoaPods compatibility
+
+The native iOS SDK has `TelnyxRTC.podspec` and a manually dispatched
+`release-04-deploy-cocoapods` workflow which lints it and runs `pod trunk push`
+using `COCOAPODS_TRUNK_TOKEN`. It distributes Swift sources, whereas this repo
+would distribute the precompiled framework.
+
+For KMP, a `TelnyxObservability.podspec` should specify the matching version,
+iOS deployment target, an HTTP `source` pointing to the immutable XCFramework
+ZIP with `:sha256`, and
+`vendored_frameworks = 'TelnyxObservability.xcframework'`. Validate with
+`pod spec lint` and a clean iOS consumer, then have `TelnyxRTC.podspec` depend on
+that exact pod version. Flutter/RN podspecs can consume the same binary pod.
+SPM and CocoaPods users must not link two copies of the static framework.
+
+CocoaPods [announced public trunk becoming read-only on December 2, 2026](https://blog.cocoapods.org/CocoaPods-Specs-Repo/).
+Do not make new trunk submissions the only supported path: host binary podspecs
+in a public Specs repository, or let direct consumers reference this Git repo's
+versioned podspec. Native SDK transitive pod dependencies require the Specs
+repository to be configured by the consumer; a podspec cannot embed a Git URL in
+`spec.dependency`. Flutter/RN can instead vendor the framework through their
+existing package distribution where appropriate. No pod or release is published
+by this implementation.
 
 ## Integrity and provenance
 
