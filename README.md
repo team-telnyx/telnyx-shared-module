@@ -44,10 +44,12 @@ JitPack runs `jitpack.yml`: download the immutable Android bundle pinned in
 `android-release.json`, verify its checksum and per-AAR hashes/provenance, and
 run Gradle `publishToMavenLocal`. No private source or credentials reach JitPack.
 This is Android AAR/POM publication, not a common-source multiplatform
-publication. Four modules are published with exact internal version pins:
-`shared-foundation`, `observability-contract`, `observability-core`, and
-`observability-api`. External dependencies, runtime scopes and exclusions come
-from the private build's generated Android release POMs.
+publication. New transport-enabled candidates publish five modules with exact
+internal version pins:
+`shared-foundation`, `observability-contract`, `observability-core`,
+`observability-transport-ws`, and `observability-api`. Existing four-module releases
+(such as 0.2.2) remain supported without a transport artifact. External
+dependencies, runtime scopes and exclusions come from the private build's generated Android release POMs.
 
 After a complete release is approved and published, the native Android SDK adds:
 
@@ -67,7 +69,7 @@ new immutable release tag, not `main`.
 
 ### Validation without publishing a release
 
-Build the four Android release AARs/POMs in the private source repository and run
+Build all five Android release AARs/POMs in the private source repository and run
 `scripts/export-android-publication.py <candidate-version> <bundle-path> <full-source-commit>`.
 Use the candidate's `artifacts.json` and bundle locally:
 

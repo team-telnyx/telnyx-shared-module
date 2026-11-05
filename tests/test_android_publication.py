@@ -37,7 +37,7 @@ class AndroidPublicationTest(unittest.TestCase):
                                                       "exclusions": [{"group": "org.jetbrains.kotlin", "artifact": "kotlin-stdlib-common"}]}]
 
     def bundle(self, metadata=None, extra=None):
-        files = {f"{name}.aar": self.aar for name in module.MODULES}
+        files = {m["file"]: self.aar for m in (metadata or self.metadata)["modules"]}
         files["publication.json"] = json.dumps(metadata or self.metadata).encode()
         files.update(extra or {})
         data = zip_bytes(files)
@@ -84,9 +84,18 @@ class AndroidPublicationTest(unittest.TestCase):
 
     @unittest.skipUnless(os.environ.get("TEST_GRADLE_PUBLICATION") == "1", "enable for Java/Gradle integration")
     def test_gradle_publishes_complete_poms(self):
-        metadata = copy.deepcopy(self.metadata)
+        for metadata in (copy.deepcopy(self.metadata), self.legacy_metadata()):
+            with self.subTest(module_count=len(metadata["modules"])):
+                self.assert_gradle_publication(metadata)
+
+    def assert_gradle_publication(self, metadata):
         api = next(m for m in metadata["modules"] if m["name"] == "observability-api")
         api["dependencies"].append({"module": "observability-core", "scope": "compile"})
+        has_transport = any(m["name"] == "observability-transport-ws" for m in metadata["modules"])
+        if has_transport:
+            api["dependencies"].append({"module": "observability-transport-ws", "scope": "compile"})
+            transport = next(m for m in metadata["modules"] if m["name"] == "observability-transport-ws")
+            transport["dependencies"].append({"group": "com.squareup.okhttp3", "artifact": "okhttp", "version": "4.12.0", "scope": "runtime"})
         files = module.validate_bundle(*self.bundle(metadata))
         root = Path(__file__).resolve().parents[1]
         with tempfile.TemporaryDirectory() as directory:
@@ -100,11 +109,11 @@ class AndroidPublicationTest(unittest.TestCase):
             repository = project / "maven"
             result = subprocess.run([str(root / "gradlew"), "-p", str(project), "publishToMavenLocal",
                                      "-Pversion=fixture-publication", f"-Dmaven.repo.local={repository}", "--console=plain"],
-                                    capture_output=True, text=True)
+                                    capture_output=True, text=True, timeout=120)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             group = "com.github.team-telnyx.telnyx-shared-module"
             ns = {"m": "http://maven.apache.org/POM/4.0.0"}
-            for name in module.MODULES:
+            for name in {m["name"] for m in metadata["modules"]}:
                 path = repository / group.replace(".", "/") / name / "fixture-publication" / f"{name}-fixture-publication.pom"
                 pom = ET.parse(path).getroot()
                 self.assertEqual(pom.findtext("m:packaging", namespaces=ns), "aar")
@@ -113,9 +122,49 @@ class AndroidPublicationTest(unittest.TestCase):
                     core = next(d for d in deps if d.findtext("m:artifactId", namespaces=ns) == "observability-core")
                     self.assertEqual(core.findtext("m:groupId", namespaces=ns), group)
                     self.assertEqual(core.findtext("m:version", namespaces=ns), "fixture-publication")
+                    if has_transport:
+                        transport = next(d for d in deps if d.findtext("m:artifactId", namespaces=ns) == "observability-transport-ws")
+                        self.assertEqual(transport.findtext("m:groupId", namespaces=ns), group)
+                        self.assertEqual(transport.findtext("m:version", namespaces=ns), "fixture-publication")
                     kotlin = next(d for d in deps if d.findtext("m:artifactId", namespaces=ns) == "kotlin-stdlib")
                     self.assertEqual(kotlin.findtext("m:scope", namespaces=ns), "runtime")
                     self.assertEqual(len(kotlin.findall("m:exclusions/m:exclusion", ns)), 1)
+                if name == "observability-transport-ws":
+                    okhttp = next(d for d in pom.findall("m:dependencies/m:dependency", ns)
+                                  if d.findtext("m:artifactId", namespaces=ns) == "okhttp")
+                    self.assertEqual(okhttp.findtext("m:version", namespaces=ns), "4.12.0")
+                    self.assertEqual(okhttp.findtext("m:scope", namespaces=ns), "runtime")
+            if not has_transport:
+                self.assertFalse((repository / group.replace(".", "/") / "observability-transport-ws").exists())
+
+    def legacy_metadata(self):
+        metadata = copy.deepcopy(self.metadata)
+        metadata["modules"] = [m for m in metadata["modules"] if m["name"] != "observability-transport-ws"]
+        return metadata
+
+    def test_legacy_four_module_bundle(self):
+        metadata = self.legacy_metadata()
+        files = module.validate_bundle(*self.bundle(metadata))
+        self.assertEqual(json.loads(files["publication.json"]), metadata)
+        self.assertEqual(len(files), 5)
+
+    def test_missing_transport_dependency_rejected(self):
+        metadata = self.legacy_metadata()
+        metadata["modules"][0]["dependencies"].append({"module": "observability-transport-ws", "scope": "compile"})
+        with self.assertRaisesRegex(ValueError, "Invalid internal dependency"):
+            module.validate_bundle(*self.bundle(metadata))
+
+    def test_unknown_module_rejected(self):
+        metadata = copy.deepcopy(self.metadata)
+        metadata["modules"][-1]["name"] = "unexpected-module"
+        with self.assertRaisesRegex(ValueError, "complete Android"):
+            module.validate_bundle(*self.bundle(metadata))
+
+    def test_duplicate_module_rejected(self):
+        metadata = copy.deepcopy(self.metadata)
+        metadata["modules"].append(copy.deepcopy(metadata["modules"][0]))
+        with self.assertRaisesRegex(ValueError, "complete Android"):
+            module.validate_bundle(*self.bundle(metadata))
 
     def test_tampered_bundle(self):
         data, release = self.bundle()
@@ -135,7 +184,7 @@ class AndroidPublicationTest(unittest.TestCase):
     def test_missing_module(self):
         metadata = copy.deepcopy(self.metadata)
         metadata["modules"].pop()
-        with self.assertRaisesRegex(ValueError, "four Android"):
+        with self.assertRaisesRegex(ValueError, "complete Android"):
             module.validate_bundle(*self.bundle(metadata))
 
     def test_inexact_dependency(self):
