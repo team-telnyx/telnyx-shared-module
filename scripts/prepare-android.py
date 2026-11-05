@@ -10,7 +10,8 @@ from urllib.request import urlopen
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
-MODULES = {"shared-foundation", "observability-contract", "observability-core", "observability-api"}
+BASE_MODULES = {"shared-foundation", "observability-contract", "observability-core", "observability-api"}
+MODULES = BASE_MODULES | {"observability-transport-ws"}
 COORDINATE = re.compile(r"[A-Za-z0-9_.-]+")
 
 
@@ -18,14 +19,16 @@ def validate_bundle(data, release):
     if hashlib.sha256(data).hexdigest() != release["sha256"]:
         raise ValueError("Android bundle SHA-256 mismatch")
     with zipfile.ZipFile(io.BytesIO(data)) as archive:
-        expected = {"publication.json"} | {f"{name}.aar" for name in MODULES}
+        metadata = json.loads(archive.read("publication.json"))
+        names = [m["name"] for m in metadata["modules"]]
+        module_names = set(names)
+        if module_names not in (BASE_MODULES, MODULES) or len(names) != len(module_names):
+            raise ValueError("Expected complete Android modules (four legacy or five with transport)")
+        expected = {"publication.json"} | {f"{name}.aar" for name in module_names}
         if len(archive.namelist()) != len(expected) or set(archive.namelist()) != expected:
             raise ValueError("Unexpected Android bundle entries")
-        metadata = json.loads(archive.read("publication.json"))
         if metadata["schema_version"] != 1 or metadata["version"] != release["version"] or metadata["source_commit"] != release["source_commit"]:
             raise ValueError("Android bundle provenance mismatch")
-        if len(metadata["modules"]) != 4 or {m["name"] for m in metadata["modules"]} != MODULES:
-            raise ValueError("Expected all four Android modules")
         for module in metadata["modules"]:
             if module["file"] != f"{module['name']}.aar":
                 raise ValueError("Invalid AAR filename")
@@ -39,7 +42,7 @@ def validate_bundle(data, release):
                 if dep["scope"] not in ("compile", "runtime"):
                     raise ValueError("Invalid dependency scope")
                 if "module" in dep:
-                    if dep["module"] not in MODULES or dep["module"] == module["name"]:
+                    if dep["module"] not in module_names or dep["module"] == module["name"]:
                         raise ValueError("Invalid internal dependency")
                 elif not all(COORDINATE.fullmatch(dep[k]) for k in ("group", "artifact", "version")):
                     raise ValueError("Expected exact external dependency coordinates")
@@ -74,7 +77,7 @@ def main():
     target.mkdir(parents=True, exist_ok=True)
     for name, data in files.items():
         (target / name).write_bytes(data)
-    print(f"Verified four Android modules from {release['source_commit']}")
+    print(f"Verified {len(files) - 1} Android modules from {release['source_commit']}")
 
 
 if __name__ == "__main__":

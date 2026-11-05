@@ -1,2 +1,15 @@
+import groovy.json.JsonSlurper
+
 rootProject.name = 'telnyx-shared-module'
-include 'shared-foundation', 'observability-contract', 'observability-core', 'observability-api'
+// Include exactly the validated bundle's modules, preserving four-module releases.
+def publicationFile = file('incoming/android/publication.json')
+if (!publicationFile.isFile()) {
+    throw new GradleException('Run python3 scripts/prepare-android.py before Gradle publication')
+}
+def modules = new JsonSlurper().parse(publicationFile).modules.collect { it.name }
+def baseModules = ['shared-foundation', 'observability-contract', 'observability-core', 'observability-api'] as Set
+def transportModules = baseModules + ['observability-transport-ws']
+if (!(modules.toSet() in [baseModules, transportModules]) || modules.size() != modules.toSet().size()) {
+    throw new GradleException('Expected complete Android modules (four legacy or five with transport)')
+}
+modules.each { include it }
